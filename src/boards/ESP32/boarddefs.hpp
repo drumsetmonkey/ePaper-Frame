@@ -6,6 +6,10 @@
 * Description:      ESP32 Board Definitions
 *****************************************************************************/
 
+#include <HardwareSerial.h>
+#include <Wire.h>
+#include <SPI.h>
+
 /**********************
 *  CONFIG NAMESPACE  *
 **********************/
