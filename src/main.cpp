@@ -10,9 +10,8 @@
 
 #include <GxEPD2.h>
 #include <GxEPD2_7C.h>
-#include <pngle.h>
 
-#include <demo_image.hpp>
+//#include <demo_image.hpp>
 
 #include <stdint.h>
 
@@ -33,6 +32,8 @@
 
 #if defined(ESP32)
     #define MAX_DISPLAY_BUFFER_SIZE 65536ul // e.g.
+#else
+    #define MAX_DISPLAY_BUFFER_SIZE 448
 #endif
 
 #if IS_GxEPD2_BW(GxEPD2_DISPLAY_CLASS)
@@ -49,51 +50,42 @@ GxEPD2_DISPLAY_CLASS<GxEPD2_DRIVER_CLASS, MAX_HEIGHT(GxEPD2_DRIVER_CLASS)>
                                 config::board::epaper::RST,
                                 config::board::epaper::BUSY));
 
-void init_screen(pngle_t*, uint32_t, uint32_t);
-void draw_pixel(pngle_t*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t[4]);
-void finish_screen(pngle_t*);
+#include <SD/sdcard.hpp>
 
 void setup(void)
 {
-    display.init(115200);
-    SPI.end();
-    SPI.begin(config::board::spi::SCK,
-              config::board::spi::MISO,
-              config::board::spi::MOSI,
-              config::board::spi::SS);
+    // randomize changing the picture. Timer set to two hours, 24 hour change on
+    // average is one in every twelve. However, this will be disabled at night,
+    // say 8 hours. 24-8 = 16/2 is every one in 8
+
+    Serial.begin(115200);
+    display.init();
+    config::board::spi::reset();
 
     display.setRotation(0);
     display.firstPage();
 
-    do {
-        pngle_t *pngle = pngle_new();
-        pngle_set_init_callback(pngle, init_screen);
-        pngle_set_draw_callback(pngle, draw_pixel);
-        pngle_set_done_callback(pngle, finish_screen);
-
-        pngle_feed(pngle, IMAGE_DATA, IMAGE_SIZE);
-    } while (display.nextPage());
-
+    if (sdcard::setup() != sdcard::error::SUCCESS)
+    {
+        // TODO: handle error on screen
+    }
 }
 
 void loop(void)
 {
+    Serial.print("Random File: ");
+    sdcard::File_t file;
+    sdcard::randomFile(file);
+    sdcard::close(file);
+    Serial.println();
 
+    delay(2500);
 }
 
-void init_screen(pngle_t *pngle, uint32_t w, uint32_t h)
-{
-}
-
-void draw_pixel(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint8_t rgba[4])
-{
+/*
     uint16_t displayColor = 0x0000;
     displayColor |= ((rgba[0] >> 3) << 11); // Red
     displayColor |= ((rgba[1] >> 2) <<  5); // Green
     displayColor |= ((rgba[2] >> 3) <<  0); // Blue
     display.fillRect(x, y, w, h, displayColor);
-}
-
-void finish_screen(pngle_t *pngle)
-{
-}
+*/

@@ -3,12 +3,13 @@
 *
 * Author:           Andy Belle-Isle (drumsetmonkey)  
 * Created:          12/04/21 
-* Description:      ESP32 Board Definitions
+* Description:      Adafruit 32u4 Feather Board Definitions
 *****************************************************************************/
 
 #include <HardwareSerial.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <Arduino.h>
 
 /**********************
 *  CONFIG NAMESPACE  *
@@ -24,26 +25,24 @@ namespace config {
         *  EPAPER PIN DEFINITIONS  *
         ****************************/
         namespace epaper {
-            const int CS   = 15;
-            const int DC   = 27;
-            const int RST  = 26;
-            const int BUSY = 25;
+            const int CS   = A5;
+            const int DC   = A4;
+            const int RST  = A3;
+            const int BUSY = A2;
         }
 
         /*************************
         *  SPI PIN DEFINITIONS  *
         *************************/
         namespace spi {
-            const int SCK  = 13;
-            const int MISO = 12;
-            const int MOSI = 14;
+            const int SCK  = SCK;
+            const int MISO = MISO;
+            const int MOSI = MOSI;
+
             void reset(void)
             {
                 SPI.end();
-                SPI.begin(spi::SCK,
-                          spi::MISO,
-                          spi::MOSI,
-                          epaper::CS);
+                SPI.begin();
             }
         }
 
@@ -51,8 +50,8 @@ namespace config {
         * SD CARD DEFINITIONS *
         ***********************/
         namespace sdcard {
-            const int CS = 22;
-            const int CD = 23;
+            const int CS = 4;
+            const int CD = 7;
         }
     }
 }
