@@ -10,3 +10,14 @@ the attached ePaper display.
 ## Building & Running
 This firmware uses PlatformIO for programming and firmware management
 
+## Color Palette
+
+| Color  | Hex Value |
+|--------|-----------|
+| Red    | 0xA6534F  |
+| Orange | 0xC16653  |
+| Yellow | 0xDDCD5E  |
+| Green  | 0x4C6E55  |
+| Blue   | 0x39476C  |
+| White  | 0xE4E4E4  |
+| Black  | 0x060606  |
