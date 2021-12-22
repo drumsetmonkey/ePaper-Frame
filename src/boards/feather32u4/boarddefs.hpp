@@ -53,6 +53,20 @@ namespace config {
             const int CS = 4;
             const int CD = 7;
         }
+
+        
+        /************************
+        * POWER PIN DEFINITIONS *
+        ************************/
+        namespace power {
+            const int DONE    = 5;
+            const int BAT     = A9; // Pin 7
+            const int LIGHT   = A7; // Pin 6
+            const int RANDPIN = A1; // A1
+            const int FORCE   = 10;
+
+            const float LOW_BATTERY = 3.45;
+        }
     }
 }
 

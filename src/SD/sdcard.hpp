@@ -1,3 +1,5 @@
+#pragma once
+
 /*
  * Print size, modify date/time, and name for all files in root.
  */
@@ -9,6 +11,8 @@
 
 // Try max SPI clock for an SD. Reduce SPI_CLOCK if errors occur.
 #define SPI_CLOCK SD_SCK_MHZ(50)
+
+#define ENABLE_DEDICATED_SPI 0
 
 // Try to select the best SD card configuration.
 #if HAS_SDIO_CLASS
@@ -25,7 +29,7 @@ namespace sdcard {
     typedef SdFat SD_t;
     typedef File File_t;
 #elif SD_FAT_TYPE == 1
-    typedef SdFat32 SD_2;
+    typedef SdFat32 SD_t;
     typedef File32 File_t;
 #elif SD_FAT_TYPE == 2
     typedef SdExFat SD_t;
@@ -37,7 +41,7 @@ namespace sdcard {
 #error invalid SD_FAT_TYPE
 #endif  // SD_FAT_TYPE
 
-SD_t sd;
+static SD_t sd;
 
 /** Error type class */
 enum class error:int{
@@ -45,12 +49,33 @@ enum class error:int{
     NO_INITIALIZATION,
     NO_ROOT_DIRECTORY,
     NO_DIR,
-    NO_FILE
+    NO_FILE,
+    NO_CARD
 };
+
+error inserted(void)
+{
+    // Digital pin out for card detect
+    // If no card, return error to reset device
+
+    //pinMode(config::board::sdcard::CD, INPUT_PULLUP);
+    //Serial.println(digitalRead(config::board::sdcard::CD));
+
+    if (LOW == digitalRead(config::board::sdcard::CD))
+    {
+        return error::NO_CARD;
+    }
+
+    return error::SUCCESS;
+}
 
 error setup()
 {
     File_t dir;
+
+    pinMode(config::board::sdcard::CD, INPUT_PULLUP);
+    if (inserted() != error::SUCCESS)
+        return error::NO_CARD;
 
     // Initialize the SD.
     if (!sd.begin(SD_CONFIG)) {
@@ -61,9 +86,6 @@ error setup()
     if (!dir.open("/")) {
         return error::NO_ROOT_DIRECTORY;
     }
-    
-    // Digital pin out for card detect
-    // If no card, return error to reset device
 
     return error::SUCCESS;
 }
@@ -107,8 +129,6 @@ error randomFile(File_t& file)
     while (randFile-- && file.openNext(&dir, O_RDONLY)) {
         if (randFile > 0)
             file.close();
-        else
-            file.printName(&Serial);
     }
 
     /*********************
@@ -121,9 +141,16 @@ error randomFile(File_t& file)
     return error::SUCCESS;
 }
 
+error open(File_t& file, const char* filename)
+{
+    if (!file.open(filename, O_RDONLY))
+        return error::NO_FILE;
+    return error::SUCCESS;
+}
+
 error close(File_t& file)
 {
-    if (file.close())
+    if (!file.close())
         return error::NO_FILE;
     return error::SUCCESS;
 }

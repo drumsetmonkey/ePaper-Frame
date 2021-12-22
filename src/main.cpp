@@ -8,84 +8,121 @@
 
 #include <boarddefs.hpp>
 
-#include <GxEPD2.h>
-#include <GxEPD2_7C.h>
-
-//#include <demo_image.hpp>
-
-#include <stdint.h>
-
-#define GxEPD2_DISPLAY_CLASS GxEPD2_7C
-#define GxEPD2_DRIVER_CLASS GxEPD2_565c
-
-// somehow there should be an easier way to do this
-#define GxEPD2_BW_IS_GxEPD2_BW false
-#define GxEPD2_3C_IS_GxEPD2_3C false
-#define GxEPD2_7C_IS_GxEPD2_7C true
-#define GxEPD2_1248_IS_GxEPD2_1248 false
-
-#define IS_GxEPD(c, x) (c##x)
-#define IS_GxEPD2_BW(x) IS_GxEPD(GxEPD2_BW_IS_, x)
-#define IS_GxEPD2_3C(x) IS_GxEPD(GxEPD2_3C_IS_, x)
-#define IS_GxEPD2_7C(x) IS_GxEPD(GxEPD2_7C_IS_, x)
-#define IS_GxEPD2_1248(x) IS_GxEPD(GxEPD2_1248_IS_, x)
-
-#if defined(ESP32)
-    #define MAX_DISPLAY_BUFFER_SIZE 65536ul // e.g.
-#else
-    #define MAX_DISPLAY_BUFFER_SIZE 448
-#endif
-
-#if IS_GxEPD2_BW(GxEPD2_DISPLAY_CLASS)
-    #define MAX_HEIGHT(EPD) (EPD::HEIGHT <= MAX_DISPLAY_BUFFER_SIZE / (EPD::WIDTH / 8) ? EPD::HEIGHT : MAX_DISPLAY_BUFFER_SIZE / (EPD::WIDTH / 8))
-#elif IS_GxEPD2_3C(GxEPD2_DISPLAY_CLASS)
-    #define MAX_HEIGHT(EPD) (EPD::HEIGHT <= (MAX_DISPLAY_BUFFER_SIZE / 2) / (EPD::WIDTH / 8) ? EPD::HEIGHT : (MAX_DISPLAY_BUFFER_SIZE / 2) / (EPD::WIDTH / 8))
-#elif IS_GxEPD2_7C(GxEPD2_DISPLAY_CLASS)
-    #define MAX_HEIGHT(EPD) (EPD::HEIGHT <= (MAX_DISPLAY_BUFFER_SIZE) / (EPD::WIDTH / 2) ? EPD::HEIGHT : (MAX_DISPLAY_BUFFER_SIZE) / (EPD::WIDTH / 2))
-#endif
-
-GxEPD2_DISPLAY_CLASS<GxEPD2_DRIVER_CLASS, MAX_HEIGHT(GxEPD2_DRIVER_CLASS)> 
-    display(GxEPD2_DRIVER_CLASS(config::board::epaper::CS,
-                                config::board::epaper::DC,
-                                config::board::epaper::RST,
-                                config::board::epaper::BUSY));
-
+#include <power/power.hpp>
 #include <SD/sdcard.hpp>
+#include <SD/raw.hpp>
+
+#include <epd5in65f/epd5in65f.h>
+
+#define DEBUG (0)
+#if DEBUG
+#define dprint(x) Serial.println(x)
+#else
+#define dprint(x)
+#endif
+
+bool forceChange = false;
 
 void setup(void)
 {
-    // randomize changing the picture. Timer set to two hours, 24 hour change on
-    // average is one in every twelve. However, this will be disabled at night,
-    // say 8 hours. 24-8 = 16/2 is every one in 8
-
-    Serial.begin(115200);
-    display.init();
-    config::board::spi::reset();
-
-    display.setRotation(0);
-    display.firstPage();
-
-    if (sdcard::setup() != sdcard::error::SUCCESS)
-    {
-        // TODO: handle error on screen
+    pinMode(config::board::power::FORCE, INPUT);
+    if (digitalRead(config::board::power::FORCE)) {
+        forceChange = true;
     }
-}
 
-void loop(void)
-{
-    Serial.print("Random File: ");
+    if (DEBUG == 1) {
+        Serial.begin(115200);
+        dprint("Booting...");
+        delay(5000);
+        dprint("Starting");
+    }
+    power::setup();
+
+    /* If the force change button was pressed, do not shut off */
+    if (!forceChange) {
+
+        /* If it is light, go to sleep */
+        if (false && power::light()) {
+            dprint("There is light, no update");
+            power::shutoff();
+        }
+
+        /* Randomize changing the picture. Timer set to two hours, 24 hour change on
+        * average is one in every twelve. However, this will be disabled at night,
+        * say 8 hours. 24-8 = 16/2 is every one in 8
+        */
+        int randLoop = random(0, 4);
+        int randDraw = random(32767);
+        for (int i = 0; i < randLoop; i++)
+            randDraw = random(32000);
+        dprint(randDraw);
+        if (randDraw > 8156) {
+            dprint("Nope no picture this time");
+            power::shutoff();
+        }
+    } // !forceChange
+
+    /* Initialize the epaper */
+    EPD_565c epd(config::board::epaper::RST,
+                 config::board::epaper::DC,
+                 config::board::epaper::CS,
+                 config::board::epaper::BUSY);
+
+    if (epd.setup() != EPD_Base::error::SUCCESS) {
+        power::shutoff();
+    }
+
+    /* If the battery is low, display an error and shut off */
+    if (power::battery_voltage() <= config::board::power::LOW_BATTERY) {
+        epd.clear(0x4); // Red is low battery
+        power::shutoff();
+    }
+
+    /* Set up the SD card, if failure, display error */
+    sdcard::error newerror = sdcard::setup();
+    if (newerror != sdcard::error::SUCCESS) {
+        if (newerror == sdcard::error::NO_CARD) {
+            epd.clear(0x3); // Blue is no SD card
+        }
+
+        epd.clear(0x2); // Green is SD error
+        power::shutoff();
+    }
+
+    /* Find random file and open it it */
     sdcard::File_t file;
-    sdcard::randomFile(file);
-    sdcard::close(file);
-    Serial.println();
+    if (sdcard::randomFile(file) != sdcard::error::SUCCESS) {
+        epd.clear(0x0); // Black is no random file
+        power::shutoff();
+    };
 
-    delay(2500);
+    /* Create and validate the image */
+    RAW img(file);
+    if (img.validate(0x565c) != RAW::error::VALID) {
+        epd.clear(0x5); // Yellow is invalid image
+        power::shutoff();
+    }
+
+    /* Draw the image */
+    img.seekData();
+    epd.start();
+    for (int i = 0; i < 448; i++)
+    {
+        for (int j = 0; j < 600 / 2; j++) {
+            epd.sendData(img.readRaw());
+        }
+    }
+    epd.stop();
+
+    /* Cleanup */
+    sdcard::close(file); // Cya
+    power::shutoff();
 }
 
-/*
-    uint16_t displayColor = 0x0000;
-    displayColor |= ((rgba[0] >> 3) << 11); // Red
-    displayColor |= ((rgba[1] >> 2) <<  5); // Green
-    displayColor |= ((rgba[2] >> 3) <<  0); // Blue
-    display.fillRect(x, y, w, h, displayColor);
-*/
+/* We should never get here */
+void loop(void) {
+    if (DEBUG) {
+        setup();
+    }
+    power::shutoff(); // Just in case, shut down
+}
