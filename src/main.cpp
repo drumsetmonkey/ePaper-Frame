@@ -12,7 +12,7 @@
 #include <SD/sdcard.hpp>
 #include <SD/raw.hpp>
 
-#include <epd5in65f/epd5in65f.h>
+#include <epd5in65f/epd5in65f.hpp>
 
 #define DEBUG (0)
 #if DEBUG

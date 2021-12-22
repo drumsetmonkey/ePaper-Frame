@@ -6,6 +6,8 @@
 * Description:      Adafruit 32u4 Feather Board Definitions
 *****************************************************************************/
 
+#pragma once
+
 #include <HardwareSerial.h>
 #include <Wire.h>
 #include <SPI.h>

@@ -6,6 +6,8 @@
 * Description:      ESP32 Board Definitions
 *****************************************************************************/
 
+#pragma once
+
 #include <HardwareSerial.h>
 #include <Wire.h>
 #include <SPI.h>
