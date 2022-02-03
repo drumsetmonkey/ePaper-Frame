@@ -1,6 +1,6 @@
 #pragma once
 
-#include "epd_base.hpp"
+#include "epd.hpp"
 
 /**********************************
 Color Index

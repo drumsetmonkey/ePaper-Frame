@@ -1,4 +1,4 @@
-#include "epd_base.hpp"
+#include "epd.hpp"
 #include <SPI.h>
 
 EPD_Base::EPD_Base(int RST, int DC, int CS, int BUSY)
@@ -8,25 +8,25 @@ EPD_Base::EPD_Base(int RST, int DC, int CS, int BUSY)
 EPD_Base::~EPD_Base() 
 {};
 
-void EPD_Base::DigitalWrite(int pin, int value) {
+void EPD_Base::digitalWrite(int pin, int value) {
     digitalWrite(pin, value);
 }
 
-int EPD_Base::DigitalRead(int pin) {
+int EPD_Base::digitalRead(int pin) {
     return digitalRead(pin);
 }
 
-void EPD_Base::DelayMs(unsigned int delaytime) {
+void EPD_Base::delayMs(unsigned int delaytime) {
     delay(delaytime);
 }
 
-void EPD_Base::SpiTransfer(unsigned char data) {
+void EPD_Base::sendCommand(unsigned char data) {
     digitalWrite(cs_pin, LOW);
     SPI.transfer(data);
     digitalWrite(cs_pin, HIGH);
 }
 
-EPD_Base::error EPD_Base::BaseInit(void) {
+EPD_Base::error EPD_Base::setup(void) {
     pinMode(cs_pin, OUTPUT);
     pinMode(reset_pin, OUTPUT);
     pinMode(dc_pin, OUTPUT);

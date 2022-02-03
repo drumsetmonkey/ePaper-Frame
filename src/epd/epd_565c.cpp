@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-#include "epd5in65f.hpp"
+#include "epd_565c.hpp"
 
 EPD_565c::~EPD_565c()
 {};
@@ -15,7 +15,7 @@ parameter:
 ******************************************************************************/
 int EPD_565c::setup(void)
 {
-    if (BaseInit() != 0)
+    if (EPD_Base::setup() != 0) // I don't love this
     {
         return -1;
     }
@@ -51,7 +51,7 @@ int EPD_565c::setup(void)
     sendData(0xC0);
     sendCommand(0xE3);
     sendData(0xAA);
-    DelayMs(100);
+    delayMs(100);
     sendCommand(0x50);
     sendData(0x37);
 
@@ -63,8 +63,8 @@ int EPD_565c::setup(void)
  */
 void EPD_565c::sendCommand(unsigned char command)
 {
-    DigitalWrite(dc_pin, LOW);
-    SpiTransfer(command);
+    digitalWrite(dc_pin, LOW);
+    sendCommand(command);
 }
 
 /**
@@ -72,18 +72,18 @@ void EPD_565c::sendCommand(unsigned char command)
  */
 void EPD_565c::sendData(unsigned char data)
 {
-    DigitalWrite(dc_pin, HIGH);
-    SpiTransfer(data);
+    digitalWrite(dc_pin, HIGH);
+    sendCommand(data);
 }
 
 void EPD_565c::busyHigh(void) // If BUSYN=0 then waiting
 {
-    while (!(DigitalRead(busy_pin)));
+    while (!(digitalRead(busy_pin)));
 }
 
 void EPD_565c::busyLow(void) // If BUSYN=1 then waiting
 {
-    while (DigitalRead(busy_pin));
+    while (digitalRead(busy_pin));
 }
 
 /**
@@ -93,10 +93,10 @@ void EPD_565c::busyLow(void) // If BUSYN=1 then waiting
  */
 void EPD_565c::reset(void)
 {
-    DigitalWrite(reset_pin, LOW); //module reset
-    DelayMs(1);
-    DigitalWrite(reset_pin, HIGH);
-    DelayMs(200);
+    digitalWrite(reset_pin, LOW); //module reset
+    delayMs(1);
+    digitalWrite(reset_pin, HIGH);
+    delayMs(200);
 }
 
 /******************************************************************************
@@ -142,7 +142,7 @@ void EPD_565c::demo(void)
     busyHigh();
     sendCommand(0x02); //0x02
     busyLow();
-    DelayMs(200);
+    delayMs(200);
 }
 
 /******************************************************************************
@@ -168,7 +168,7 @@ void EPD_565c::clear(uint8_t color)
     busyHigh();
     sendCommand(0x02); //0x02
     busyLow();
-    DelayMs(500);
+    delayMs(500);
 }
 
 /**
@@ -180,11 +180,11 @@ void EPD_565c::clear(uint8_t color)
  */
 void EPD_565c::sleep(void)
 {
-    DelayMs(100);
+    delayMs(100);
     sendCommand(0x07);
     sendData(0xA5);
-    DelayMs(100);
-    DigitalWrite(reset_pin, 0); // Reset
+    delayMs(100);
+    digitalWrite(reset_pin, 0); // Reset
 }
 
 /* Transaction start */
