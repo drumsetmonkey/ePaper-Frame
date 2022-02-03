@@ -82,8 +82,8 @@ void EPD_565c::sendData(uint8_t data) const
 void EPD_565c::sleep(void) const
 {
     EPD::delayMs(100);
-    sendCommand(0x07);
-    sendData(0xA5);
+    sendCommand(0x10); // Deep sleep
+    sendData(0xA5);    //  Data 1 (must be 0xA5)
     EPD::delayMs(100);
     EPD::digitalWrite(reset_pin, 0); // Reset
 }
