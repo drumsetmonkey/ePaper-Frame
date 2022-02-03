@@ -27,38 +27,38 @@ EPD::Error EPD_565c::setup(void) const
     reset();
 
     busyHigh();
-    sendCommand(0x00);
-    sendData(0xEF);
-    sendData(0x08);
-    sendCommand(0x01);
-    sendData(0x37);
-    sendData(0x00);
-    sendData(0x23);
-    sendData(0x23);
-    sendCommand(0x03);
-    sendData(0x00);
-    sendCommand(0x06);
-    sendData(0xC7);
-    sendData(0xC7);
-    sendData(0x1D);
-    sendCommand(0x30);
-    sendData(0x3C);
-    sendCommand(0x40);
-    sendData(0x00);
-    sendCommand(0x50);
-    sendData(0x37);
-    sendCommand(0x60);
-    sendData(0x22);
-    sendCommand(0x61);
-    sendData(0x02);
-    sendData(0x58);
-    sendData(0x01);
-    sendData(0xC0);
-    sendCommand(0xE3);
-    sendData(0xAA);
-    EPD::delayMs(100);
-    sendCommand(0x50);
-    sendData(0x37);
+    sendCommand(0x00); // Panel settings
+    sendData(0xEF);    //  Scan down, Shift right, DC-DC converter on, No reset
+    sendData(0x08);    //  Done
+    sendCommand(0x01); // Power settings
+    sendData(0x37);    //  Internal DC/DC generation
+    sendData(0x00);    //  Data 2 (must be zero)
+    sendData(0x23);    //  Data 3 (don't care)
+    sendData(0x23);    //  Data 4 (don't care)
+    sendCommand(0x03); // Power off sequence
+    sendData(0x00);    //  1 frame
+    sendCommand(0x06); // Booster soft start
+    sendData(0xC7);    //  Data 1 (Must be 0xC7)
+    sendData(0xC7);    //  Data 2 (Must be 0xC7)
+    sendData(0x1D);    //  Done (Must be 0x1D)
+    sendCommand(0x30); // PLL controll
+    sendData(0x3C);    //  50 HZ
+    sendCommand(0x40); // Temperature Sensor settings
+    sendData(0x00);    //  0x0 will read temp when TSE is set to 0
+    sendCommand(0x50); // VCOM settings
+    sendData(0x37);    //  Data interval of 10, White border // TODO:border chng
+    sendCommand(0x60); // idk, not in docs
+    sendData(0x22);    //  ^
+    sendCommand(0x61); // Resolution Settings
+    sendData(0x02);    //  Data 1 (must be 0x02)
+    sendData(0x58);    //  Data 2 (must be 0x58)
+    sendData(0x01);    //  Data 3 (must be 0x01)
+    sendData(0xC0);    //  Data 4 (must be 0xC0)
+    sendCommand(0xE3); // idk, not in docs
+    sendData(0xAA);    // ^
+    EPD::delayMs(100); // Wait for screen to update
+    sendCommand(0x50); // VCOM settings
+    sendData(0x37);    //  Data interval of 10, White border // TODO:border chng
 
     return EPD::Error::SUCCESS;
 }
@@ -123,12 +123,12 @@ void EPD_565c::reset(void) const
  */
 void EPD_565c::start(void) const
 {
-    sendCommand(0x61); // Full resolution
-    sendData(0x02);
-    sendData(0x58);
-    sendData(0x01);
-    sendData(0xC0);
-    sendCommand(0x10);
+    sendCommand(0x61); // Resolution Setting
+    sendData(0x02);    //  Data 1 (must be 0x02)
+    sendData(0x58);    //  Data 2 (must be 0x58)
+    sendData(0x01);    //  Data 3 (must be 0x01)
+    sendData(0xC0);    //  Data 4 (must be 0xC0)
+    sendCommand(0x10); // Start transmission
 }
 
 /**
@@ -138,11 +138,11 @@ void EPD_565c::start(void) const
  */
 void EPD_565c::stop(void) const
 {
-    sendCommand(0x04); //0x04
+    sendCommand(0x04); // Power on display
     busyHigh();
-    sendCommand(0x12); //0x12
+    sendCommand(0x12); // Refresh
     busyHigh();
-    sendCommand(0x02); //0x02
+    sendCommand(0x02); // Power off
     busyLow();
     EPD::delayMs(200);
 }
