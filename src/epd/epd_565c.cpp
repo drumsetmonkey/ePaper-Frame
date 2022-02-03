@@ -1,24 +1,29 @@
+#include "epd_565c.hpp"
+
 #include <stdlib.h>
 
-#include "epd_565c.hpp"
+EPD_565c::EPD_565c(int RST, int DC, int CS, int BUSY)
+    :EPD(RST,DC,CS,BUSY)
+{};
 
 EPD_565c::~EPD_565c()
 {};
 
-EPD_565c::EPD_565c(int RST, int DC, int CS, int BUSY)
-    :EPD_Base(RST,DC,CS,BUSY)
-{};
+/*******************************************************************************
+*                                   PUBLIC                                    *
+*******************************************************************************/
 
-/******************************************************************************
-function :  Initialize the e-Paper register
-parameter:
-******************************************************************************/
-int EPD_565c::setup(void)
+/**
+ * @brief Setup the screen.
+ * Puts the screen into operation mode
+ *
+ * @return[EPD::Error] EPD::Error::SUCCESS if everything succeeded
+ */
+EPD::Error EPD_565c::setup(void) const
 {
-    if (EPD_Base::setup() != 0) // I don't love this
-    {
-        return -1;
-    }
+    EPD::Error err = EPD::setup();
+    if (err != EPD::Error::SUCCESS) // I don't love this
+        return err;
     reset();
 
     busyHigh();
@@ -51,146 +56,74 @@ int EPD_565c::setup(void)
     sendData(0xC0);
     sendCommand(0xE3);
     sendData(0xAA);
-    delayMs(100);
+    EPD::delayMs(100);
     sendCommand(0x50);
     sendData(0x37);
 
-    return 0;
+    return EPD::Error::SUCCESS;
 }
 
 /**
- *  @brief: basic function for sending commands
+ * @brief Sends data (parameters) to ePaper screen
+ *
+ * @param[data] The data to send
  */
-void EPD_565c::sendCommand(unsigned char command)
+void EPD_565c::sendData(uint8_t data) const
 {
-    digitalWrite(dc_pin, LOW);
-    sendCommand(command);
+    EPD::digitalWrite(dc_pin, HIGH);
+    EPD::transfer(data);
+}
+
+
+/**
+ * @brief Put ePaper into deep sleep mode
+ * Requires hardware reset to wake up. (EPD_565C::reset())
+ */
+void EPD_565c::sleep(void) const
+{
+    EPD::delayMs(100);
+    sendCommand(0x07);
+    sendData(0xA5);
+    EPD::delayMs(100);
+    EPD::digitalWrite(reset_pin, 0); // Reset
 }
 
 /**
- *  @brief: basic function for sending data
+ * @brief Clear the screen with a certain color.
+ *
+ * @param[color] The screen to clear the color with
  */
-void EPD_565c::sendData(unsigned char data)
+void EPD_565c::clear(EPD_565c::Color color) const
 {
-    digitalWrite(dc_pin, HIGH);
-    sendCommand(data);
-}
-
-void EPD_565c::busyHigh(void) // If BUSYN=0 then waiting
-{
-    while (!(digitalRead(busy_pin)));
-}
-
-void EPD_565c::busyLow(void) // If BUSYN=1 then waiting
-{
-    while (digitalRead(busy_pin));
-}
-
-/**
- *  @brief: module reset.
- *          often used to awaken the module in deep sleep,
- *          see EPD_565c::Sleep();
- */
-void EPD_565c::reset(void)
-{
-    digitalWrite(reset_pin, LOW); //module reset
-    delayMs(1);
-    digitalWrite(reset_pin, HIGH);
-    delayMs(200);
-}
-
-/******************************************************************************
-function :	show 7 kind of color block
-parameter:
-******************************************************************************/
-void EPD_565c::demo(void)
-{
-    unsigned long i, j, k;
-    unsigned char const Color_seven[8] =
-        {EPD_5IN65F_BLACK, EPD_5IN65F_BLUE, EPD_5IN65F_GREEN, EPD_5IN65F_ORANGE,
-         EPD_5IN65F_RED, EPD_5IN65F_YELLOW, EPD_5IN65F_WHITE, EPD_5IN65F_CLEAN};
-    sendCommand(0x61); //Set Resolution setting
-    sendData(0x02);
-    sendData(0x58);
-    sendData(0x01);
-    sendData(0xC0);
-    sendCommand(0x10);
-
-    for (i = 0; i < 224; i++)
-    {
-        for (k = 0; k < 4; k++)
-        {
-            for (j = 0; j < 75; j++)
-            {
-                sendData((Color_seven[k] << 4) | Color_seven[k]);
-            }
-        }
-    }
-    for (i = 0; i < 224; i++)
-    {
-        for (k = 4; k < 8; k++)
-        {
-            for (j = 0; j < 75; j++)
-            {
-                sendData((Color_seven[k] << 4) | Color_seven[k]);
-            }
-        }
-    }
-    sendCommand(0x04); //0x04
-    busyHigh();
-    sendCommand(0x12); //0x12
-    busyHigh();
-    sendCommand(0x02); //0x02
-    busyLow();
-    delayMs(200);
-}
-
-/******************************************************************************
-function : 
-      Clear screen
-******************************************************************************/
-void EPD_565c::clear(uint8_t color)
-{
-    sendCommand(0x61); //Set Resolution setting
-    sendData(0x02);
-    sendData(0x58);
-    sendData(0x01);
-    sendData(0xC0);
-    sendCommand(0x10);
+    start();
     for (unsigned int i = 0; i < width / 2; i++)
     {
         for (unsigned int j = 0; j < height; j++)
-            sendData((color << 4) | color);
+            sendData(((color & 0xF) << 4) | (color & 0xF)) ;
     }
-    sendCommand(0x04); //0x04
-    busyHigh();
-    sendCommand(0x12); //0x12
-    busyHigh();
-    sendCommand(0x02); //0x02
-    busyLow();
-    delayMs(500);
+    stop();
 }
 
 /**
- *  @brief: After this command is transmitted, the chip would enter the 
- *          deep-sleep mode to save power. 
- *          The deep sleep mode would return to standby by hardware reset. 
- *          The only one parameter is a check code, the command would be
- *          You can use EPD_Reset() to awaken
+ * @brief Reset the ePaper hardware
+ * Use this to wake from sleep
  */
-void EPD_565c::sleep(void)
+void EPD_565c::reset(void) const
 {
-    delayMs(100);
-    sendCommand(0x07);
-    sendData(0xA5);
-    delayMs(100);
-    digitalWrite(reset_pin, 0); // Reset
+    EPD::digitalWrite(reset_pin, LOW); // Force a hardware power down
+    EPD::delayMs(1);
+    EPD::digitalWrite(reset_pin, HIGH);
+    EPD::delayMs(200);
 }
 
-/* Transaction start */
-void EPD_565c::start(void)
+/**
+ * @brief Start a screen content transaction.
+ * @warning This function must be called before sending any colors, then must be
+ * followed up by stop()
+ */
+void EPD_565c::start(void) const
 {
-    sendCommand(0x61); //Set Resolution setting
+    sendCommand(0x61); // Full resolution
     sendData(0x02);
     sendData(0x58);
     sendData(0x01);
@@ -198,8 +131,12 @@ void EPD_565c::start(void)
     sendCommand(0x10);
 }
 
-/* Transaction stop */
-void EPD_565c::stop(void)
+/**
+ * @brief Step the screen content transaction.
+ * @warning This function must be called after sending colors. Must be preceded
+ * by start(), then color data.
+ */
+void EPD_565c::stop(void) const
 {
     sendCommand(0x04); //0x04
     busyHigh();
@@ -207,7 +144,61 @@ void EPD_565c::stop(void)
     busyHigh();
     sendCommand(0x02); //0x02
     busyLow();
-    delay(200);
+    EPD::delayMs(200);
 }
 
-/* END OF FILE */
+/**
+ * @brief Display screen demo of all 8 colors.
+ */
+void EPD_565c::demo(void) const
+{
+    start();
+
+    for (unsigned i = 0; i < 224; i++) {
+        for (unsigned k = 0; k < 4; k++) {
+            for (unsigned j = 0; j < 75; j++) {
+                sendData((k << 4) | k);
+            }
+        }
+    }
+    for (unsigned i = 0; i < 224; i++) {
+        for (unsigned k = 4; k < 8; k++) {
+            for (unsigned j = 0; j < 75; j++) {
+                sendData((k << 4) | k);
+            }
+        }
+    }
+
+    stop();
+}
+
+/*******************************************************************************
+*                                   PRIVATE                                   *
+*******************************************************************************/
+
+/**
+ * @brief Send a controll command to the ePaper screen
+ *
+ * @param[command] The command to send
+ */
+void EPD_565c::sendCommand(uint8_t command) const
+{
+    EPD::digitalWrite(dc_pin, LOW);
+    EPD::transfer(command);
+}
+
+/**
+ * @brief Wait for busy line to return high
+ */
+void EPD_565c::busyHigh(void) const
+{
+    while (!(EPD::digitalRead(busy_pin)));
+}
+
+/**
+ * @brief Wait for busy line to return low
+ */
+void EPD_565c::busyLow(void) const
+{
+    while (EPD::digitalRead(busy_pin));
+}

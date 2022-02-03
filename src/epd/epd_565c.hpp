@@ -2,36 +2,40 @@
 
 #include "epd.hpp"
 
-/**********************************
-Color Index
-**********************************/
-#define EPD_5IN65F_BLACK   0x0	/// 000
-#define EPD_5IN65F_WHITE   0x1	///	001
-#define EPD_5IN65F_GREEN   0x2	///	010
-#define EPD_5IN65F_BLUE    0x3	///	011
-#define EPD_5IN65F_RED     0x4	///	100
-#define EPD_5IN65F_YELLOW  0x5	///	101
-#define EPD_5IN65F_ORANGE  0x6	///	110
-#define EPD_5IN65F_CLEAN   0x7	///	111   unavailable  Afterimage
-
-class EPD_565c : EPD_Base {
+class EPD_565c : EPD {
 public:
     EPD_565c(int RST, int DC, int CS, int BUSY);
     ~EPD_565c();
-    int  setup(void);
-	void busyHigh(void);
-	void busyLow(void);
-    void reset(void);
-	void demo(void);
-    void sendCommand(unsigned char command);
-    void sendData(unsigned char data);
-    void sleep(void);
-    void clear(uint8_t color);
 
-    void start(void);
-    void stop(void);
+    enum Color : uint8_t {
+        Black  = 0x0,
+        White  = 0x1,
+        Green  = 0x2,
+        Blue   = 0x3,
+        Red    = 0x4,
+        Yellow = 0x5,
+        Orange = 0x6,
+        Clean  = 0x7
+    };
+
+    const static unsigned long width = 600;
+    const static unsigned long height = 448;
+
+    EPD::Error setup(void) const;
+
+    void sendData(uint8_t data) const;
+
+    void sleep(void) const;
+    void clear(Color color) const;
+    void reset(void) const;
+
+    void start(void) const;
+    void stop(void) const;
+
+	void demo(void) const;
 
 private:
-    const unsigned long width = 600;
-    const unsigned long height = 448;
+    void sendCommand(uint8_t command) const;
+	void busyHigh(void) const;
+	void busyLow(void) const;
 };

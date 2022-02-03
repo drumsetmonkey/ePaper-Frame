@@ -2,22 +2,24 @@
 
 #include <Arduino.h>
 
-class EPD_Base {
+class EPD {
 public:
-    enum error : int {
+    enum Error : int {
         SUCCESS = 0
     };
 
-    EPD_Base(int RST, int DC, int CS, int BUSY);
-    ~EPD_Base(void);
-
-    error setup(void);
-    void  digitalWrite(int pin, int value); 
-    int   digitalRead(int pin);
-    void  delayMs(unsigned int delaytime);
-    void  sendCommand(unsigned char data);
-
 protected:
+
+    EPD(int RST, int DC, int CS, int BUSY);
+    ~EPD(void);
+
+    Error setup(void) const;
+
+    void  digitalWrite(int pin, int value) const; // TODO: inline
+    int   digitalRead(int pin) const;             // TODO: inline
+    void  delayMs(unsigned int delaytime) const;  // TODO: inline
+    void  transfer(unsigned char data) const;
+
     const int reset_pin;
     const int dc_pin;
     const int cs_pin;

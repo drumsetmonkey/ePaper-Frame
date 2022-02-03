@@ -68,13 +68,13 @@ void setup(void)
                  config::board::epaper::CS,
                  config::board::epaper::BUSY);
 
-    if (epd.setup() != EPD_Base::error::SUCCESS) {
+    if (epd.setup() != EPD::Error::SUCCESS) {
         power::shutoff();
     }
 
     /* If the battery is low, display an error and shut off */
     if (power::battery_voltage() <= config::board::power::LOW_BATTERY) {
-        epd.clear(0x4); // Red is low battery
+        epd.clear(epd.Red); // Red is low battery
         power::shutoff();
     }
 
@@ -82,24 +82,24 @@ void setup(void)
     sdcard::error newerror = sdcard::setup();
     if (newerror != sdcard::error::SUCCESS) {
         if (newerror == sdcard::error::NO_CARD) {
-            epd.clear(0x3); // Blue is no SD card
+            epd.clear(epd.Blue); // Blue is no SD card
         }
 
-        epd.clear(0x2); // Green is SD error
+        epd.clear(epd.Green); // Green is SD error
         power::shutoff();
     }
 
     /* Find random file and open it it */
     sdcard::File_t file;
     if (sdcard::randomFile(file) != sdcard::error::SUCCESS) {
-        epd.clear(0x0); // Black is no random file
+        epd.clear(epd.Black); // Black is no random file
         power::shutoff();
     };
 
     /* Create and validate the image */
     RAW img(file);
     if (img.validate(0x565c) != RAW::error::VALID) {
-        epd.clear(0x5); // Yellow is invalid image
+        epd.clear(epd.Yellow); // Yellow is invalid image
         power::shutoff();
     }
 
