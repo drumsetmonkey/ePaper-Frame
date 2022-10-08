@@ -1,198 +1,257 @@
-use image::{Rgb, RgbImage};
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// #![allow(unsafe_code)]
 
-struct ScreenInfo {
-    name: String,
-    code: u16,
-    palette: Vec<Rgb<u8>>
+use eframe::egui;
+
+use egui::mutex::Mutex;
+use std::sync::Arc;
+
+mod file_picker;
+mod convert;
+mod logging;
+
+fn main() {
+    let options = eframe::NativeOptions {
+        initial_window_size: Some(egui::vec2(350.0, 380.0)),
+        multisampling: 8,
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Custom 3D painting in eframe using glow",
+        options,
+        Box::new(|cc| Box::new(MyApp::new(cc))),
+    );
 }
 
-enum ScreenType {
-    S565c,
-    S16
+pub enum Message {
+    FileOpen(std::path::PathBuf),
+    // Other messages
 }
 
-impl ScreenType {
-    fn value(&self) -> ScreenInfo {
+impl Message {
+    fn print(&self) {
         match self {
-            ScreenType::S565c => ScreenInfo {
-                name: "Waveshare 5.65\" 7-Color ACeP".to_string(),
-                code: 0x565c, 
-                palette: vec![Rgb::from([006,006,006]), // Black
-                              Rgb::from([240,240,240]), // White
-                              Rgb::from([076,110,085]), // Green
-                              Rgb::from([057,071,108]), // Blue
-                              Rgb::from([166,083,079]), // Red
-                              Rgb::from([221,205,094]), // Yellow
-                              Rgb::from([193,102,083]), // Orange
-                              Rgb::from([210,166,145])],// Tan/Clean
-            },
-
-            ScreenType::S16 => ScreenInfo {
-                name: "16-Shade ePaper".to_string(),
-                code: 0xAC16, 
-                palette: vec![Rgb::from([0,0,0]),
-                              Rgb::from([16,16,16]),
-                              Rgb::from([32,32,32]),
-                              Rgb::from([48,48,48]),
-                              Rgb::from([64,64,64]),
-                              Rgb::from([80,80,80]),
-                              Rgb::from([96,96,96]),
-                              Rgb::from([112,112,112]),
-                              Rgb::from([128,128,128]),
-                              Rgb::from([144,144,144]),
-                              Rgb::from([160,160,160]),
-                              Rgb::from([176,176,176]),
-                              Rgb::from([192,192,192]),
-                              Rgb::from([208,208,208]),
-                              Rgb::from([224,224,224]),
-                              Rgb::from([240,240,240]),
-                              Rgb::from([255,255,255])],
-            },
+            Message::FileOpen(x) => {
+                let os_str = x.as_os_str();
+                println!("{}", os_str.to_str().unwrap());
+            }
         }
     }
 }
 
-enum DitheringTechnique {
-    FloydSteinberg,
-    FloydSteinbergReducedBleed,
+struct MyApp {
+    /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
+    rotating_triangle: Arc<Mutex<RotatingTriangle>>,
+    angle: f32,
+    message_channel: (
+        std::sync::mpsc::Sender<Message>,
+        std::sync::mpsc::Receiver<Message>,
+    ),
+    logger: logging::Logger
 }
 
-fn depalette(pixel: Rgb<u8>, screen_type: &ScreenType) -> u8
-{
-    let palette = screen_type.value().palette;
-
-    for (i, x) in palette.iter().enumerate() {
-        if *x == pixel {
-            return i as u8;
+impl MyApp {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self {
+            rotating_triangle: Arc::new(Mutex::new(RotatingTriangle::new(&cc.gl))),
+            angle: 0.0,
+            message_channel: std::sync::mpsc::channel(),
+            logger: logging::Logger::new(0)
         }
     }
-
-    return 0;
 }
 
-fn dither_image(img: &mut RgbImage, screen_type: &ScreenType, dither: DitheringTechnique)
-{
-    let find_closest = |color: Rgb<u8>| -> Rgb<u8> {
-        let mut closest = *screen_type.value().palette.first().unwrap();
-        let mut difference : i32 = i32::max_value();
-        for i in screen_type.value().palette.iter() {
-            let rd : i32 = color[0] as i32 - i[0] as i32;
-            let gd : i32 = color[1] as i32 - i[1] as i32;
-            let bd : i32 = color[2] as i32 - i[2] as i32;
-            let d = rd.pow(2) + gd.pow(2) + bd.pow(2);
-            if d < difference {
-                closest = *i;
-                difference = d;
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint();
+
+        loop {
+            match self.message_channel.1.try_recv() {
+                Ok(_message) => {
+                    // Handle file
+                    _message.print();
+                    self.logger.log("File opened"); 
+                }
+                Err(_) => break
             }
         }
 
-        return closest;
-    };
+        egui::SidePanel::left("control_panel")
+            .resizable(true)
+            .default_width(150.0)
+            .width_range(80.0..=200.0)
+            .show(ctx, |ui| {
+                let file_button = ui.button("Import Files");
+                if file_button.clicked() {
+                    let files = file_picker::pick_blocking();
+                    if files.is_some() {
+                        for f in files.unwrap() {
+                            self.message_channel.0.send(Message::FileOpen(f)).ok();
+                        }
+                    }
+                } else if file_button.hovered() {
+                    egui::popup::show_tooltip_at_pointer(ui.ctx(),
+                        egui::Id::new("import_file_tooltip"), |ui| {
+                            ui.label("Import image files for conversion");
+                        });
+                }
+            });
 
-    let apply_bias = |color: Rgb<u8>, quant: [f32; 3], bias: f32| -> Rgb<u8> {
+        egui::TopBottomPanel::bottom("file_panel")
+            .resizable(true)
+            .default_height(150.0)
+            .height_range(80.0..=200.0)
+            .show(ctx, |ui| {
+                ui.label("BOTTOM");
+            });
 
-        let mut k = [color[0] as f32, color[1] as f32, color[2] as f32];
+        egui::CentralPanel::default()
+            .show(ctx, |ui| {
+                egui::Frame::canvas(ui.style())
+                    .show(ui, |ui| {
+                        self.custom_painting(ui);
+                    });
+            });
+    }
 
-        k[0] += quant[0] * bias;
-        k[1] += quant[1] * bias;
-        k[2] += quant[2] * bias;
+    fn on_exit(&mut self, gl: &glow::Context) {
+        self.rotating_triangle.lock().destroy(gl);
+    }
+}
 
-        let newcolor = Rgb::from(k.map(|x| f32::clamp(x, 0.0, 255.0) as u8));
+impl MyApp {
+    fn custom_painting(&mut self, ui: &mut egui::Ui) {
+        let (rect, response) =
+            ui.allocate_exact_size(egui::Vec2::splat(300.0), egui::Sense::drag());
 
-        return newcolor;
-    };
+        self.angle += response.drag_delta().x * 0.01;
 
-    for y in 0..img.height() {
-        for x in 0..img.width() {
-            let oldpixel = *img.get_pixel(x, y);
-            let newpixel = find_closest(oldpixel);
-            img.put_pixel(x, y, newpixel);
+        // Clone locals so we can move them into the paint callback:
+        let angle = self.angle;
+        let rotating_triangle = self.rotating_triangle.clone();
 
-            let quant : [f32; 3] = [
-                oldpixel[0] as f32 - newpixel[0] as f32,
-                oldpixel[1] as f32 - newpixel[1] as f32,
-                oldpixel[2] as f32 - newpixel[2] as f32 
+        let callback = egui::PaintCallback {
+            rect,
+            callback: std::sync::Arc::new(move |_info, render_ctx| {
+                if let Some(painter) = render_ctx.downcast_ref::<egui_glow::Painter>() {
+                    rotating_triangle.lock().paint(painter.gl(), angle);
+                } else {
+                    eprintln!("Can't do custom painting because we are not using a glow context");
+                }
+            }),
+        };
+        ui.painter().add(callback);
+    }
+}
+
+struct RotatingTriangle {
+    program: glow::Program,
+    vertex_array: glow::VertexArray,
+}
+
+impl RotatingTriangle {
+    fn new(gl: &glow::Context) -> Self {
+        use glow::HasContext as _;
+
+        let shader_version = if cfg!(target_arch = "wasm32") {
+            "#version 300 es"
+        } else {
+            "#version 410"
+        };
+
+        unsafe {
+            let program = gl.create_program().expect("Cannot create program");
+
+            let (vertex_shader_source, fragment_shader_source) = (
+                r#"
+                    const vec2 verts[3] = vec2[3](
+                        vec2(0.0, 1.0),
+                        vec2(-1.0, -1.0),
+                        vec2(1.0, -1.0)
+                    );
+                    const vec4 colors[3] = vec4[3](
+                        vec4(1.0, 0.0, 0.0, 1.0),
+                        vec4(0.0, 1.0, 0.0, 1.0),
+                        vec4(0.0, 0.0, 1.0, 1.0)
+                    );
+                    out vec4 v_color;
+                    uniform float u_angle;
+                    void main() {
+                        v_color = colors[gl_VertexID];
+                        gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);
+                        gl_Position.x *= cos(u_angle);
+                    }
+                "#,
+                r#"
+                    precision mediump float;
+                    in vec4 v_color;
+                    out vec4 out_color;
+                    void main() {
+                        out_color = v_color;
+                    }
+                "#,
+            );
+
+            let shader_sources = [
+                (glow::VERTEX_SHADER, vertex_shader_source),
+                (glow::FRAGMENT_SHADER, fragment_shader_source),
             ];
 
-            let weight = match dither {
-                DitheringTechnique::FloydSteinberg => [7.0, 5.0, 3.0, 1.0],
-                DitheringTechnique::FloydSteinbergReducedBleed => [5.0, 2.0, 3.0, 1.0]
-            };
+            let shaders: Vec<_> = shader_sources
+                .iter()
+                .map(|(shader_type, shader_source)| {
+                    let shader = gl
+                        .create_shader(*shader_type)
+                        .expect("Cannot create shader");
+                    gl.shader_source(shader, &format!("{}\n{}", shader_version, shader_source));
+                    gl.compile_shader(shader);
+                    if !gl.get_shader_compile_status(shader) {
+                        panic!("{}", gl.get_shader_info_log(shader));
+                    }
+                    gl.attach_shader(program, shader);
+                    shader
+                })
+                .collect();
 
-            if x+1 < img.width() {
-                img.put_pixel(x+1, y+0, apply_bias(*img.get_pixel(x+1, y+0), quant, weight[0]/16.0));
+            gl.link_program(program);
+            if !gl.get_program_link_status(program) {
+                panic!("{}", gl.get_program_info_log(program));
             }
 
-            if y+1 < img.height() {
-                img.put_pixel(x+0, y+1, apply_bias(*img.get_pixel(x+0, y+1), quant, weight[1]/16.0));
-
-                if x > 0 {
-                    img.put_pixel(x-1, y+1, apply_bias(*img.get_pixel(x-1, y+1), quant, weight[2]/16.0));
-                }
-
-                if x+1 < img.width() {
-                    img.put_pixel(x+1, y+1, apply_bias(*img.get_pixel(x+1, y+1), quant, weight[3]/16.0));
-                }
-
+            for shader in shaders {
+                gl.detach_shader(program, shader);
+                gl.delete_shader(shader);
             }
 
-        }
-    }
-}
+            let vertex_array = gl
+                .create_vertex_array()
+                .expect("Cannot create vertex array");
 
-fn modify_image(img: &RgbImage, screen_type: &ScreenType) -> Vec<u8>
-{
-    println!("Image dimensions: {:?}", img.dimensions());
-
-    let mut raw : Vec<u8> = Vec::new();
-
-    let w = img.width();
-    let h = img.height();
-
-    let mut dest = img.clone();
-
-    dither_image(&mut dest, &screen_type, DitheringTechnique::FloydSteinbergReducedBleed);
-
-    dest.save("/tmp/help.png").unwrap();
-
-    let screen_code = screen_type.value().code;
-    raw.push((screen_code >> 8)   as u8);
-    raw.push((screen_code & 0xFF) as u8);
-
-    for y in 0..h {
-        for x in (0..w).step_by(2) {
-            let px0 = depalette(*dest.get_pixel(x+0, y), &screen_type);
-            let px1 = depalette(*dest.get_pixel(x+1, y), &screen_type);
-
-            let px : u8 = ((px0 << 4) & 0xF0) | ((px1 << 0) & 0x0F);
-            raw.push(px);
+            Self {
+                program,
+                vertex_array,
+            }
         }
     }
 
-    return raw;
-}
+    fn destroy(&self, gl: &glow::Context) {
+        use glow::HasContext as _;
+        unsafe {
+            gl.delete_program(self.program);
+            gl.delete_vertex_array(self.vertex_array);
+        }
+    }
 
-fn main()
-{
-    let img = match image::open("/home/andy/Downloads/porsche.jpg") {
-        Ok(v) => v,
-        Err(_) => {
-            println!("Bad image");
-            return;
-        },
-    };
-
-    let target_screen = ScreenType::S565c;
-
-    let mut dest = img.to_rgb8().clone();
-
-    dither_image(&mut dest, &target_screen, DitheringTechnique::FloydSteinbergReducedBleed);
-
-    dest.save("/tmp/help.png").unwrap();
-
-    //let raw = modify_image(&img.to_rgb8(), &target_screen);
-
-    println!("Screen Type: {}", target_screen.value().name);
-    //println!("Dimensions: {:?}", raw);
-
+    fn paint(&self, gl: &glow::Context, angle: f32) {
+        use glow::HasContext as _;
+        unsafe {
+            gl.use_program(Some(self.program));
+            gl.uniform_1_f32(
+                gl.get_uniform_location(self.program, "u_angle").as_ref(),
+                angle,
+            );
+            gl.bind_vertex_array(Some(self.vertex_array));
+            gl.draw_arrays(glow::TRIANGLES, 0, 3);
+        }
+    }
 }
